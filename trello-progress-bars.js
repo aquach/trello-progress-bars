@@ -1,18 +1,13 @@
 (() => {
-    function venn(setA, setB) {
-        let a = new Set(setA);
-        let ab = new Set();
-        let b = new Set(setB);
-        for (let elem of setB) {
-            a.delete(elem);
-            if (setA.has(elem)) {
-                ab.add(elem);
-            }
+    const PROGRESS_BAR_WRAPPER_CLASS = "trello-progress-bar-wrapper";
+
+    function diff(a, b) {
+        let deleted = new Set(a);
+        for (let elem of b) {
+            deleted.delete(elem);
         }
-        for (let elem of setA) {
-            b.delete(elem);
-        }
-        return { a, b, ab };
+
+        return deleted;
     }
 
     function debounce(f, ms) {
@@ -62,29 +57,23 @@
             ).filter((badge) => !badge.classList.contains("is-complete")),
         ]);
 
-        const { a: deletedBadges, b: newBadges, ab: existingBadges } = venn(
-            prevBadges,
-            currBadges
-        );
-
-        // console.log(
-        //     `Before: ${prevBadges.size} badges. Now: ${currBadges.size} badges. ${deletedBadges.size} deleted, ${newBadges.size} created, ${existingBadges.size} still extant.`
-        // );
+        const deletedBadges = diff(prevBadges, currBadges);
 
         deletedBadges.forEach((badge) => {
             const targetNode = parentNodesMap[badge];
             const wrapperElem = targetNode.getElementsByClassName(
-                "trello-progress-bar-wrapper"
+                PROGRESS_BAR_WRAPPER_CLASS
             )[0];
             if (wrapperElem) {
                 wrapperElem.remove();
             }
         });
 
-        existingBadges.forEach((badge) => {
+        currBadges.forEach((badge) => {
             const targetNode = badge.parentNode.parentNode.parentNode;
+            parentNodesMap[badge] = targetNode;
             const wrapperElem = targetNode.getElementsByClassName(
-                "trello-progress-bar-wrapper"
+                PROGRESS_BAR_WRAPPER_CLASS
             )[0];
             if (wrapperElem) {
                 const progressBarFillingElem = wrapperElem.children[0];
@@ -94,22 +83,39 @@
             }
         });
 
-        newBadges.forEach((badge) => {
-            const targetNode = badge.parentNode.parentNode.parentNode;
-            parentNodesMap[badge] = targetNode;
-
-            // console.log(
-            //     `Creating progress bar for node ${targetNode.innerText}.`
-            // );
-            createBadge(badge, targetNode);
-        });
-
         prevBadges = currBadges;
     }
 
-    const observer = new MutationObserver(debounce(updateBars, 100));
-    observer.observe(document.getElementById("board"), {
-        childList: true,
-        subtree: true,
+    document.addEventListener("readystatechange", (event) => {
+        if (event.target.readyState === "complete") {
+            const debouncedUpdate = debounce(updateBars, 100);
+            const observer = new MutationObserver((mutations) => {
+                if (
+                    mutations.some((m) => {
+                        const relevantNodes = [
+                            ...m.addedNodes,
+                            ...m.removedNodes,
+                        ];
+                        return (
+                            relevantNodes.some(
+                                (n) =>
+                                    !n.classList.contains(
+                                        PROGRESS_BAR_WRAPPER_CLASS
+                                    )
+                            ) &&
+                            !m.target.classList.contains(
+                                PROGRESS_BAR_WRAPPER_CLASS
+                            )
+                        );
+                    })
+                ) {
+                    debouncedUpdate();
+                }
+            });
+            observer.observe(document.getElementById("board"), {
+                childList: true,
+                subtree: true,
+            });
+        }
     });
 })();
